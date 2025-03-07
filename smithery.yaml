@@ -8,20 +8,19 @@ startCommand:
     properties:
       client:
         type: string
-        enum: ["default", "cursor"]
-        description: "The client type to use."
-        default: "default"
+        default: default
+        description: The client type to use.
       remote:
         type: boolean
-        description: "Whether to run in remote mode with HTTP server."
         default: false
+        description: Whether to run in remote mode with HTTP server.
       port:
-        type: integer
-        description: "Port to use for remote HTTP server."
+        type: number
         default: 3000
+        description: Port to use for remote HTTP server.
       apiKey:
         type: string
-        description: "Optional API key for securing remote access."
+        description: Optional API key for securing remote access.
   commandFunction:
     # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
     |-
@@ -40,7 +39,7 @@ startCommand:
         ...(config?.apiKey ? { MCP_API_KEY: config.apiKey } : {})
       }
     })
-  exampleConfig: 
-    client: "default"
+  exampleConfig:
+    client: default
     remote: false
     port: 3000
