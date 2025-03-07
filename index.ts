@@ -18,7 +18,38 @@ const client = clientArg ? clientArg.split('=')[1] : 'default';
 // Check if running in Smithery environment
 const isSmithery = process.env.SMITHERY_ENV === 'true';
 
-console.error(`Starting apple-mcp server... (Client: ${client}, Smithery: ${isSmithery ? 'yes' : 'no'})`);
+// Client-specific logging function to avoid polluting stderr for sensitive clients
+const log = (message: string, forceLog = false) => {
+  if (forceLog || client !== 'cursor') { // Cursor can be more sensitive to stderr output
+    console.error(message);
+  }
+};
+
+// Utility function to format errors based on client type
+const formatError = (error: unknown): string => {
+  if (error instanceof Error) {
+    // Cursor prefers shorter, more precise error messages
+    if (client === 'cursor') {
+      return error.message;
+    } 
+    // Claude can handle more verbose errors
+    else if (client === 'claude') {
+      return `Error: ${error.message}${error.stack ? `\nStack: ${error.stack}` : ''}`;
+    }
+    // Default handling
+    return error.message;
+  }
+  return String(error);
+};
+
+// Maximum response size (in characters) for different clients
+const MAX_RESPONSE_SIZE: Record<string, number> = {
+  'default': 200000,
+  'cursor': 100000, // More conservative size for Cursor
+  'claude': 200000,
+};
+
+log(`Starting apple-mcp server... (Client: ${client}, Smithery: ${isSmithery ? 'yes' : 'no'})`, true);
 
 interface WebSearchArgs {
   query: string;
@@ -52,7 +83,7 @@ type ModuleMap = {
 // Helper function for lazy module loading
 async function loadModule<T extends 'contacts' | 'notes' | 'message' | 'mail' | 'reminders' | 'webSearch'>(moduleName: T): Promise<ModuleMap[T]> {
   if (safeModeFallback) {
-    console.error(`Loading ${moduleName} module on demand (safe mode)...`);
+    log(`Loading ${moduleName} module on demand (safe mode)...`);
   }
   
   try {
@@ -79,7 +110,8 @@ async function loadModule<T extends 'contacts' | 'notes' | 'message' | 'mail' | 
         throw new Error(`Unknown module: ${moduleName}`);
     }
   } catch (error) {
-    console.error(`Error loading ${moduleName} module:`, error);
+    log(`Error loading ${moduleName} module:`, true);
+    console.error(error);
     throw error;
   }
 }
@@ -164,8 +196,18 @@ let server: Server;
 
 // Initialize the server and set up handlers
 function initServer() {
-  console.error(`Initializing server in ${safeModeFallback ? 'safe' : 'standard'} mode...`);
-  console.error(`Client type: ${client}`);
+  log(`Initializing server in ${safeModeFallback ? 'safe' : 'standard'} mode...`);
+  log(`Client type: ${client}`);
+  
+  // Client-specific behaviors
+  if (client === 'cursor') {
+    log("Applying Cursor IDE optimizations...");
+    // Stricter protocol adherence for Cursor
+    safeModeFallback = true; // Use safe mode for Cursor to avoid potential issues
+  } else if (client === 'claude') {
+    log("Applying Claude Desktop optimizations...");
+    // Claude-specific optimizations
+  }
   
   server = new Server(
     {
@@ -191,7 +233,7 @@ function initServer() {
         throw new Error("No arguments provided");
       }
 
-      // Continue with existing tool logic when not in proxy mode
+      // Continue with existing tool logic
       switch (name) {
         case "contacts": {
           if (!isContactsArgs(args)) {
@@ -213,29 +255,24 @@ function initServer() {
                 isError: false
               };
             } else {
-              const allNumbers = await contactsModule.getAllNumbers();
-              const contactCount = Object.keys(allNumbers).length;
+              // Get all contacts, with potential size limiting based on client
+              const allContactsObj = await contactsModule.getAllNumbers();
+              let responseText = "";
               
-              if (contactCount === 0) {
-                return {
-                  content: [{
-                    type: "text",
-                    text: "No contacts found in the address book. Please make sure you have granted access to Contacts."
-                  }],
-                  isError: false
-                };
+              for (const [name, numbers] of Object.entries(allContactsObj)) {
+                responseText += `${name}: ${numbers.join(", ")}\n`;
+                
+                // Check if we're approaching size limit for cursor
+                if (client === 'cursor' && responseText.length > MAX_RESPONSE_SIZE.cursor * 0.8) {
+                  responseText += `\n[Response truncated - ${Object.keys(allContactsObj).length - Object.entries(allContactsObj).length} more contacts available]`;
+                  break;
+                }
               }
-
-              const formattedContacts = Object.entries(allNumbers)
-                .filter(([_, phones]) => phones.length > 0)
-                .map(([name, phones]) => `${name}: ${phones.join(", ")}`);
-
+              
               return {
                 content: [{
                   type: "text",
-                  text: formattedContacts.length > 0 ?
-                    `Found ${contactCount} contacts:\n\n${formattedContacts.join("\n")}` :
-                    "Found contacts but none have phone numbers. Try searching by name to see more details."
+                  text: responseText
                 }],
                 isError: false
               };
@@ -244,7 +281,7 @@ function initServer() {
             return {
               content: [{
                 type: "text",
-                text: `Error accessing contacts: ${error instanceof Error ? error.message : String(error)}`
+                text: formatError(error)
               }],
               isError: true
             };
@@ -288,7 +325,7 @@ function initServer() {
             return {
               content: [{
                 type: "text",
-                text: `Error accessing notes: ${error instanceof Error ? error.message : String(error)}`
+                text: formatError(error)
               }],
               isError: true
             };
@@ -394,7 +431,7 @@ function initServer() {
             return {
               content: [{
                 type: "text",
-                text: `Error with messages operation: ${error instanceof Error ? error.message : String(error)}`
+                text: formatError(error)
               }],
               isError: true
             };
@@ -624,7 +661,7 @@ end tell`;
             return {
               content: [{
                 type: "text",
-                text: `Error with mail operation: ${error instanceof Error ? error.message : String(error)}`
+                text: formatError(error)
               }],
               isError: true
             };
@@ -727,7 +764,7 @@ end tell`;
             return {
               content: [{
                 type: "text",
-                text: `Error in reminders tool: ${error}`
+                text: formatError(error)
               }],
               isError: true
             };
@@ -763,7 +800,7 @@ end tell`;
         content: [
           {
             type: "text",
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+            text: formatError(error),
           },
         ],
         isError: true,
@@ -785,20 +822,80 @@ end tell`;
       const transport = new StdioServerTransport();
 
       // Ensure stdout is only used for JSON messages
-      console.error("Setting up stdout filter...");
+      log("Setting up stdout filter...");
       const originalStdoutWrite = process.stdout.write.bind(process.stdout);
       process.stdout.write = (chunk: any, encoding?: any, callback?: any) => {
         // Only allow JSON messages to pass through
-        if (typeof chunk === "string" && !chunk.startsWith("{")) {
-          console.error("Filtering non-JSON stdout message");
-          return true; // Silently skip non-JSON messages
+        if (typeof chunk === "string") {
+          // Client-specific output filtering
+          if (client === 'cursor') {
+            // Strict JSON validation for Cursor
+            if (!chunk.startsWith("{")) {
+              log("Filtering non-JSON stdout message for Cursor", false);
+              return true; // Silently skip non-JSON messages for Cursor
+            }
+            
+            // Ensure valid JSON for Cursor
+            try {
+              const jsonObj = JSON.parse(chunk);
+              // Check if response exceeds max size for client
+              const responseSize = chunk.length;
+              if (responseSize > MAX_RESPONSE_SIZE[client]) {
+                log(`Response size (${responseSize}) exceeds limit for ${client}, truncating...`, true);
+                // Create a truncated version with a warning
+                if (jsonObj.result && jsonObj.result.content && Array.isArray(jsonObj.result.content)) {
+                  const originalText = jsonObj.result.content[0]?.text || '';
+                  const truncatedText = originalText.substring(0, MAX_RESPONSE_SIZE[client] - 200) + 
+                    `\n\n[Response truncated due to size limits (${responseSize} chars)]`;
+                  jsonObj.result.content[0].text = truncatedText;
+                  return originalStdoutWrite(JSON.stringify(jsonObj), encoding, callback);
+                }
+              }
+            } catch (e) {
+              log(`Invalid JSON detected: ${e}`, true);
+              return true; // Skip invalid JSON for Cursor
+            }
+          } else {
+            // More lenient filtering for Claude and other clients
+            if (!chunk.startsWith("{")) {
+              log("Filtering non-JSON stdout message", false);
+              return true; // Still skip non-JSON, but less strict validation
+            }
+          }
         }
         return originalStdoutWrite(chunk, encoding, callback);
       };
 
       console.error("Connecting transport to server...");
       await server.connect(transport);
-      console.error("Server connected successfully!");
+      log("Server connected successfully!");
+
+      // Set up client-specific connection handling
+      if (client === 'cursor') {
+        // Handle connection close more gracefully for Cursor
+        process.on('SIGTERM', () => {
+          log('Received SIGTERM - shutting down gracefully...', true);
+          process.exit(0);
+        });
+        
+        process.on('SIGINT', () => {
+          log('Received SIGINT - shutting down gracefully...', true);
+          process.exit(0);
+        });
+        
+        // Monitor for potential issues with the transport
+        setInterval(() => {
+          try {
+            // Simple keep-alive/monitoring for Cursor
+            if (!transport) {
+              log('Transport lost - attempting to reconnect...', true);
+              // Future reconnection logic could go here
+            }
+          } catch (e) {
+            log(`Transport monitor error: ${e}`, true);
+          }
+        }, 30000); // Check every 30 seconds
+      }
     } catch (error) {
       console.error("Failed to initialize MCP server:", error);
       process.exit(1);

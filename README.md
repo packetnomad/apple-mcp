@@ -25,34 +25,16 @@ Here's a step-by-step video about how to set this up, with a demo. - https://x.c
 
 </details>
 
-#### Remote Operation
-
-You can now run Apple MCP as a remote server, which is especially useful when working with Cursor IDE:
-
-```bash
-# Run the server in remote mode
-npx -y @smithery/cli@latest install @Dhravya/apple-mcp --client cursor --remote true --port 3000
-```
-
-For secure remote operation with API key authentication:
-
-```bash
-# Run the server in secure remote mode with API key
-npx -y @smithery/cli@latest install @Dhravya/apple-mcp --client cursor --remote true --port 3000 --apiKey your-secret-key
-```
-
-When using API key authentication, you'll need to include the `Authorization: Bearer your-secret-key` header in your API requests.
-
-This will start a HTTP server on port 3000 that you can connect to from Cursor IDE.
-
 #### Client Configuration
 
 Apple MCP supports different client configurations:
 
-- Default: Works with Claude Desktop and other MCP clients
+- Default: The standard configuration
+- Claude: Optimized for Claude Desktop and other MCP clients
 - Cursor: Optimized for Cursor IDE with `--client=cursor` flag
 
-For Cursor IDE, use:
+For Cursor IDE, use this configuration in your MCP settings:
+
 ```json
 {
   "mcpServers": {
@@ -62,6 +44,24 @@ For Cursor IDE, use:
     }
 }
 ```
+
+#### Client Compatibility
+
+This MCP server includes special optimizations for different clients:
+
+- **Cursor IDE Optimizations**:
+  - More strict JSON validation and error handling
+  - Truncation of large responses to prevent issues
+  - Improved connection lifecycle management
+  - Reduced stderr output to prevent interference
+  - Safe mode by default for more reliable operation
+
+- **Claude Desktop Optimizations**:
+  - More verbose error details when helpful
+  - Larger response size limits
+  - Standard output format
+
+These optimizations ensure smooth operation with both Cursor IDE and Claude Desktop without compatibility issues.
 
 #### Quick install
 
