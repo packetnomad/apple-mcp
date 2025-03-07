@@ -25,6 +25,44 @@ Here's a step-by-step video about how to set this up, with a demo. - https://x.c
 
 </details>
 
+#### Remote Operation
+
+You can now run Apple MCP as a remote server, which is especially useful when working with Cursor IDE:
+
+```bash
+# Run the server in remote mode
+npx -y @smithery/cli@latest install @Dhravya/apple-mcp --client cursor --remote true --port 3000
+```
+
+For secure remote operation with API key authentication:
+
+```bash
+# Run the server in secure remote mode with API key
+npx -y @smithery/cli@latest install @Dhravya/apple-mcp --client cursor --remote true --port 3000 --apiKey your-secret-key
+```
+
+When using API key authentication, you'll need to include the `Authorization: Bearer your-secret-key` header in your API requests.
+
+This will start a HTTP server on port 3000 that you can connect to from Cursor IDE.
+
+#### Client Configuration
+
+Apple MCP supports different client configurations:
+
+- Default: Works with Claude Desktop and other MCP clients
+- Cursor: Optimized for Cursor IDE with `--client=cursor` flag
+
+For Cursor IDE, use:
+```json
+{
+  "mcpServers": {
+    "apple-mcp": {
+      "command": "bunx",
+      "args": ["--no-cache", "apple-mcp@latest", "--client=cursor"]
+    }
+}
+```
+
 #### Quick install
 
 To install Apple MCP for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@Dhravya/apple-mcp):

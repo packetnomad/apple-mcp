@@ -23,7 +23,11 @@
     "apple-mcp": "./index.ts"
   },
   "scripts": {
-    "dev": "bun run index.ts"
+    "dev": "bun run index.ts",
+    "dev:cursor": "bun run index.ts --client=cursor",
+    "dev:remote": "bun run index.ts --remote --port=3000",
+    "dev:secure": "bun run index.ts --remote --port=3000 --api-key=your-secret-key",
+    "smithery": "SMITHERY_ENV=true bun run index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
