@@ -8,20 +8,9 @@ startCommand:
     properties:
       client:
         type: string
-        enum: ["default", "cursor"]
+        enum: ["default", "cursor", "claude"]
         description: "The client type to use."
         default: "default"
-      remote:
-        type: boolean
-        description: "Whether to run in remote mode with HTTP server."
-        default: false
-      port:
-        type: integer
-        description: "Port to use for remote HTTP server."
-        default: 3000
-      apiKey:
-        type: string
-        description: "Optional API key for securing remote access."
   commandFunction:
     # A JS function that produces the CLI command based on the given config to start the MCP on stdio.
     |-
@@ -30,17 +19,12 @@ startCommand:
       args: [
         'run', 
         'index.ts', 
-        `--client=${config?.client || 'default'}`,
-        ...(config?.remote ? ['--remote', `--port=${config?.port || 3000}`] : []),
-        ...(config?.apiKey ? [`--api-key=${config.apiKey}`] : [])
+        `--client=${config?.client || 'default'}`
       ],
       env: {
         ...process.env,
-        SMITHERY_ENV: 'true',
-        ...(config?.apiKey ? { MCP_API_KEY: config.apiKey } : {})
+        SMITHERY_ENV: 'true'
       }
     })
   exampleConfig: 
-    client: "default"
-    remote: false
-    port: 3000
+    client: "cursor"

@@ -25,8 +25,7 @@
   "scripts": {
     "dev": "bun run index.ts",
     "dev:cursor": "bun run index.ts --client=cursor",
-    "dev:remote": "bun run index.ts --remote --port=3000",
-    "dev:secure": "bun run index.ts --remote --port=3000 --api-key=your-secret-key",
+    "dev:claude": "bun run index.ts --client=claude",
     "smithery": "SMITHERY_ENV=true bun run index.ts"
   },
   "devDependencies": {

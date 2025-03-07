@@ -14,15 +14,11 @@ import tools from "./tools";
 const args = process.argv.slice(2);
 const clientArg = args.find(arg => arg.startsWith('--client='));
 const client = clientArg ? clientArg.split('=')[1] : 'default';
-const portArg = args.find(arg => arg.startsWith('--port='));
-const port = portArg ? parseInt(portArg.split('=')[1], 10) : 3000;
-const remoteArg = args.find(arg => arg === '--remote');
-const useRemote = !!remoteArg;
-const apiKeyArg = args.find(arg => arg.startsWith('--api-key='));
-const apiKey = apiKeyArg ? apiKeyArg.split('=')[1] : process.env.MCP_API_KEY || '';
 
 // Check if running in Smithery environment
 const isSmithery = process.env.SMITHERY_ENV === 'true';
+
+console.error(`Starting apple-mcp server... (Client: ${client}, Smithery: ${isSmithery ? 'yes' : 'no'})`);
 
 interface WebSearchArgs {
   query: string;
@@ -195,6 +191,7 @@ function initServer() {
         throw new Error("No arguments provided");
       }
 
+      // Continue with existing tool logic when not in proxy mode
       switch (name) {
         case "contacts": {
           if (!isContactsArgs(args)) {
@@ -782,187 +779,26 @@ end tell`;
       console.error("Initializing transport...");
       
       // Log client and environment information
-      console.error(`Setting up transport for client: ${client} (Smithery: ${isSmithery ? 'yes' : 'no'}, Remote: ${useRemote ? 'yes' : 'no'})`);
+      console.error(`Setting up transport for client: ${client} (Smithery: ${isSmithery ? 'yes' : 'no'})`);
 
-      if (useRemote) {
-        // Create HTTP server for remote operation
-        const app = new Hono();
-        
-        // Set up routes
-        app.get('/', (c) => c.text('Apple MCP Server Running'));
-        app.get('/health', (c) => c.json({ status: 'ok', client, smithery: isSmithery }));
-        
-        // Error handling middleware
-        app.use('*', async (c, next) => {
-          try {
-            await next();
-          } catch (err) {
-            console.error('Server error:', err);
-            return c.json({ 
-              error: 'Internal server error', 
-              message: err instanceof Error ? err.message : String(err) 
-            }, 500);
-          }
-        });
-        
-        // Authentication middleware for protected routes
-        const authMiddleware = async (c: any, next: any) => {
-          // Skip auth if no API key is configured
-          if (!apiKey) {
-            console.warn('No API key configured, skipping authentication');
-            return next();
-          }
-          
-          const authHeader = c.req.header('Authorization');
-          if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return c.json({ error: 'Unauthorized' }, 401);
-          }
-          
-          const token = authHeader.substring(7);
-          if (token !== apiKey) {
-            return c.json({ error: 'Invalid API key' }, 401);
-          }
-          
-          return next();
-        };
-        
-        // MCP API endpoints can be added here
-        app.post('/api/mcp', authMiddleware, async (c) => {
-          try {
-            const data = await c.req.json();
-            
-            // Validate JSON-RPC request
-            if (!data.method || !data.jsonrpc || data.jsonrpc !== '2.0') {
-              return c.json({ 
-                jsonrpc: '2.0', 
-                error: { code: -32600, message: 'Invalid Request' }, 
-                id: data.id || null 
-              }, 400);
-            }
-            
-            // Process the MCP request
-            let result;
-            
-            // Handle ListTools request
-            if (data.method === 'mcp/listTools') {
-              result = { tools };
-            } 
-            // Handle CallTool request
-            else if (data.method === 'mcp/callTool') {
-              if (!data.params || !data.params.name) {
-                return c.json({ 
-                  jsonrpc: '2.0', 
-                  error: { code: -32602, message: 'Invalid params' }, 
-                  id: data.id || null 
-                }, 400);
-              }
-              
-              const { name, arguments: args } = data.params;
-              
-              // Mock call tool handling
-              try {
-                let response;
-                
-                switch (name) {
-                  case 'contacts':
-                    if (isContactsArgs(args)) {
-                      const contactsModule = await loadModule('contacts');
-                      // Process contacts request
-                      response = { success: true, data: "Contacts response" };
-                    } else {
-                      throw new Error("Invalid arguments for contacts tool");
-                    }
-                    break;
-                    
-                  case 'notes':
-                    if (isNotesArgs(args)) {
-                      const notesModule = await loadModule('notes');
-                      // Process notes request
-                      response = { success: true, data: "Notes response" };
-                    } else {
-                      throw new Error("Invalid arguments for notes tool");
-                    }
-                    break;
-                    
-                  // Add other tool handlers here
-                    
-                  default:
-                    throw new Error(`Unknown tool: ${name}`);
-                }
-                
-                result = { 
-                  content: [{ 
-                    type: "text", 
-                    text: JSON.stringify(response) 
-                  }],
-                  isError: false
-                };
-              } catch (error) {
-                result = { 
-                  content: [{ 
-                    type: "text", 
-                    text: error instanceof Error ? error.message : String(error) 
-                  }],
-                  isError: true
-                };
-              }
-            } 
-            else {
-              return c.json({ 
-                jsonrpc: '2.0', 
-                error: { code: -32601, message: 'Method not found' }, 
-                id: data.id || null 
-              }, 404);
-            }
-            
-            // Return JSON-RPC response
-            return c.json({
-              jsonrpc: '2.0',
-              result,
-              id: data.id || null
-            });
-          } catch (err) {
-            console.error('Error processing MCP request:', err);
-            return c.json({ 
-              jsonrpc: '2.0', 
-              error: { code: -32603, message: 'Internal error' }, 
-              id: null 
-            }, 500);
-          }
-        });
-        
-        // Start server
-        console.error(`Starting HTTP server on port ${port}`);
-        serve({
-          fetch: app.fetch,
-          port
-        });
-        
-        console.error(`Server is running at http://localhost:${port}`);
-        console.error('Available endpoints:');
-        console.error('- GET /: Server status');
-        console.error('- GET /health: Health check');
-        console.error('- POST /api/mcp: MCP request handler');
-      } else {
-        // Standard stdio transport for local operation
-        const transport = new StdioServerTransport();
+      // Standard stdio transport for local operation
+      const transport = new StdioServerTransport();
 
-        // Ensure stdout is only used for JSON messages
-        console.error("Setting up stdout filter...");
-        const originalStdoutWrite = process.stdout.write.bind(process.stdout);
-        process.stdout.write = (chunk: any, encoding?: any, callback?: any) => {
-          // Only allow JSON messages to pass through
-          if (typeof chunk === "string" && !chunk.startsWith("{")) {
-            console.error("Filtering non-JSON stdout message");
-            return true; // Silently skip non-JSON messages
-          }
-          return originalStdoutWrite(chunk, encoding, callback);
-        };
+      // Ensure stdout is only used for JSON messages
+      console.error("Setting up stdout filter...");
+      const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+      process.stdout.write = (chunk: any, encoding?: any, callback?: any) => {
+        // Only allow JSON messages to pass through
+        if (typeof chunk === "string" && !chunk.startsWith("{")) {
+          console.error("Filtering non-JSON stdout message");
+          return true; // Silently skip non-JSON messages
+        }
+        return originalStdoutWrite(chunk, encoding, callback);
+      };
 
-        console.error("Connecting transport to server...");
-        await server.connect(transport);
-        console.error("Server connected successfully!");
-      }
+      console.error("Connecting transport to server...");
+      await server.connect(transport);
+      console.error("Server connected successfully!");
     } catch (error) {
       console.error("Failed to initialize MCP server:", error);
       process.exit(1);
